@@ -456,7 +456,7 @@ STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
 }
 
 
-def handler(event: Dict[str, Any]) -> Dict[str, Any]:
+def _handler_impl(event: Dict[str, Any]) -> Dict[str, Any]:
     job_input = event.get("input", {})
     step = job_input.get("step")
     logger.info("Received step=%s", step)
@@ -503,6 +503,10 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
             error=str(exc),
             retry_recommended=False,
         )
+
+
+def handler(event):
+    return _handler_impl(event)
 
 
 runpod.serverless.start({"handler": handler})
