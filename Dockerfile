@@ -18,6 +18,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy handler and model backends
 COPY handler.py .
 COPY wan.py .
+COPY realesrgan_backend.py .
+COPY wav2lip_backend.py .
+COPY whisper_model.py .
+COPY audiocraft_backend.py .
 
 # RunPod entrypoint
 CMD ["python", "-u", "handler.py"]
