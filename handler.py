@@ -3,6 +3,7 @@ import importlib
 import json
 import logging
 import os
+import subprocess
 import traceback
 import uuid
 from dataclasses import dataclass
@@ -288,6 +289,63 @@ def run_sfx(model: Any, prompt: str, output_path: Path) -> None:
     )
 
 
+def run_ffmpeg(command: List[str]) -> None:
+    logger.info("Running FFmpeg command: %s", " ".join(command))
+    completed = subprocess.run(command, capture_output=True, text=True)
+    if completed.returncode != 0:
+        stderr_tail = (completed.stderr or "")[-4000:]
+        raise RuntimeError(f"FFmpeg failed (code {completed.returncode}): {stderr_tail}")
+
+
+def normalize_audio_track_urls(job_input: Dict[str, Any]) -> List[str]:
+    audio_urls: List[str] = []
+    audio_tracks = job_input.get("audio_tracks", {})
+
+    if isinstance(audio_tracks, dict):
+        for key in ("dialogue", "music", "background_music"):
+            value = audio_tracks.get(key)
+            if isinstance(value, str) and value:
+                audio_urls.append(value)
+        sfx_values = audio_tracks.get("sfx")
+        if isinstance(sfx_values, str) and sfx_values:
+            audio_urls.append(sfx_values)
+        elif isinstance(sfx_values, list):
+            audio_urls.extend([item for item in sfx_values if isinstance(item, str) and item])
+    elif isinstance(audio_tracks, list):
+        audio_urls.extend([item for item in audio_tracks if isinstance(item, str) and item])
+
+    for key in (
+        "dialogue_audio_url",
+        "music_audio_url",
+        "background_music_url",
+        "audio_url",
+    ):
+        value = job_input.get(key)
+        if isinstance(value, str) and value:
+            audio_urls.append(value)
+
+    sfx_urls = job_input.get("sfx_audio_urls", [])
+    if isinstance(sfx_urls, str) and sfx_urls:
+        audio_urls.append(sfx_urls)
+    elif isinstance(sfx_urls, list):
+        audio_urls.extend([item for item in sfx_urls if isinstance(item, str) and item])
+
+    deduped: List[str] = []
+    seen = set()
+    for url in audio_urls:
+        if url not in seen:
+            seen.add(url)
+            deduped.append(url)
+    return deduped
+
+
+def ffmpeg_subtitles_filter_part(srt_path: Optional[Path]) -> str:
+    if srt_path is None:
+        return ""
+    subtitle_path = str(srt_path).replace("\\", "\\\\").replace(":", "\\:")
+    return f",subtitles={subtitle_path}"
+
+
 def response(
     status: str,
     output_urls: Optional[List[str]] = None,
@@ -333,6 +391,8 @@ def _upscale_batch(
             run_upscale(model, source_path, output_path)
             output_urls.append(upload_file_to_r2(output_path, "tarik/upscale"))
         except Exception as exc:
+            if is_cuda_oom(exc):
+                raise
             logger.exception("Upscale failed for index %s: %s", absolute_idx, exc)
             failed_indices.append(absolute_idx)
     return output_urls, failed_indices
@@ -446,6 +506,148 @@ def process_sfx(job_input: Dict[str, Any]) -> StepResult:
     )
 
 
+def process_assemble(job_input: Dict[str, Any]) -> StepResult:
+    unload_all_models()
+
+    clip_urls = list(job_input.get("clips", []))
+    if not clip_urls:
+        raise ValueError("assemble requires non-empty 'clips' list")
+
+    clip_paths: List[Path] = []
+    for idx, clip_url in enumerate(clip_urls):
+        clip_paths.append(download_to_tmp(clip_url, f"assemble_clip_{idx}.mp4"))
+
+    concat_list_path = TMP_DIR / f"concat_{uuid.uuid4().hex}.txt"
+    concat_entries = []
+    for clip_path in clip_paths:
+        escaped = str(clip_path).replace("'", "'\\''")
+        concat_entries.append(f"file '{escaped}'")
+    concat_list_path.write_text("\n".join(concat_entries) + "\n", encoding="utf-8")
+
+    concatenated_video_path = TMP_DIR / f"concatenated_{uuid.uuid4().hex}.mp4"
+    run_ffmpeg(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list_path),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "20",
+            "-c:a",
+            "aac",
+            str(concatenated_video_path),
+        ]
+    )
+
+    audio_urls = normalize_audio_track_urls(job_input)
+    mixed_audio_path: Optional[Path] = None
+    if audio_urls:
+        audio_paths = [
+            download_to_tmp(audio_url, f"assemble_audio_{idx}.wav")
+            for idx, audio_url in enumerate(audio_urls)
+        ]
+        mixed_audio_path = TMP_DIR / f"mixed_audio_{uuid.uuid4().hex}.m4a"
+
+        if len(audio_paths) == 1:
+            run_ffmpeg(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(audio_paths[0]),
+                    "-c:a",
+                    "aac",
+                    str(mixed_audio_path),
+                ]
+            )
+        else:
+            ffmpeg_cmd = ["ffmpeg", "-y"]
+            for audio_path in audio_paths:
+                ffmpeg_cmd.extend(["-i", str(audio_path)])
+            amix_inputs = "".join([f"[{idx}:a]" for idx in range(len(audio_paths))])
+            ffmpeg_cmd.extend(
+                [
+                    "-filter_complex",
+                    f"{amix_inputs}amix=inputs={len(audio_paths)}:duration=longest:normalize=0[aout]",
+                    "-map",
+                    "[aout]",
+                    "-c:a",
+                    "aac",
+                    str(mixed_audio_path),
+                ]
+            )
+            run_ffmpeg(ffmpeg_cmd)
+
+    subtitle_url = job_input.get("subtitle_srt_url") or job_input.get("srt_url")
+    subtitle_path: Optional[Path] = None
+    if isinstance(subtitle_url, str) and subtitle_url:
+        subtitle_path = download_to_tmp(subtitle_url, "subtitles.srt")
+
+    export_specs = [
+        ("youtube_16x9", 1920, 1080),
+        ("tiktok_9x16", 1080, 1920),
+        ("instagram_1x1", 1080, 1080),
+        ("reel_4x5", 1080, 1350),
+    ]
+
+    output_urls: List[str] = []
+    export_map: Dict[str, str] = {}
+    subtitle_filter = ffmpeg_subtitles_filter_part(subtitle_path)
+
+    for name, width, height in export_specs:
+        output_path = TMP_DIR / f"assembled_{name}_{uuid.uuid4().hex}.mp4"
+        vf = (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height}{subtitle_filter}"
+        )
+
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(concatenated_video_path),
+        ]
+        if mixed_audio_path is not None:
+            ffmpeg_cmd.extend(["-i", str(mixed_audio_path), "-map", "0:v:0", "-map", "1:a:0"])
+        ffmpeg_cmd.extend(
+            [
+                "-vf",
+                vf,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "20",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-shortest",
+                str(output_path),
+            ]
+        )
+        run_ffmpeg(ffmpeg_cmd)
+
+        signed_url = upload_file_to_r2(output_path, f"tarik/assemble/{name}")
+        output_urls.append(signed_url)
+        export_map[name] = signed_url
+
+    return StepResult(
+        output_urls=output_urls,
+        credits_used=12,
+        payload={"exports": export_map},
+    )
+
+
 STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
     "generate_video": process_generate_video,
     "upscale": process_upscale,
@@ -453,6 +655,7 @@ STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
     "transcribe": process_transcribe,
     "music": process_music,
     "sfx": process_sfx,
+    "assemble": process_assemble,
 }
 
 
