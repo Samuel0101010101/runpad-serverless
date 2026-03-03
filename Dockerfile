@@ -15,8 +15,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy handler
+# Copy handler and model backends
 COPY handler.py .
+COPY wan.py .
 
 # RunPod entrypoint
 CMD ["python", "-u", "handler.py"]
