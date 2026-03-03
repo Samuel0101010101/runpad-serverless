@@ -176,7 +176,7 @@ def _get_r2_client():
 def download_to_tmp(url: str, suffix: str) -> Path:
     file_name = f"{uuid.uuid4().hex}_{suffix}"
     target = TMP_DIR / file_name
-    with requests.get(url, timeout=120, stream=True) as response:
+    with requests.get(url, headers={"User-Agent": "Tarik-RunPod/1.0"}, timeout=120, stream=True) as response:
         response.raise_for_status()
         with target.open("wb") as handle:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
@@ -648,6 +648,40 @@ def process_assemble(job_input: Dict[str, Any]) -> StepResult:
     )
 
 
+def process_health_check(job_input: Dict[str, Any]) -> StepResult:
+    """Lightweight smoke test: verifies CUDA, R2, and handler wiring."""
+    checks: Dict[str, Any] = {}
+
+    # CUDA availability
+    if torch is not None and torch.cuda.is_available():
+        checks["cuda"] = {
+            "available": True,
+            "device": torch.cuda.get_device_name(0),
+            "vram_gb": round(torch.cuda.get_device_properties(0).total_mem / (1024**3), 1),
+        }
+    else:
+        checks["cuda"] = {"available": False}
+
+    # R2 upload smoke test
+    try:
+        probe_path = TMP_DIR / f"health_probe_{uuid.uuid4().hex}.txt"
+        probe_path.write_text("health_check", encoding="utf-8")
+        probe_url = upload_file_to_r2(probe_path, "tarik/health")
+        checks["r2"] = {"ok": True, "url_https": probe_url.startswith("https://"), "url": probe_url}
+        logger.info("Health check R2 probe URL: %s", probe_url)
+    except Exception as exc:
+        checks["r2"] = {"ok": False, "error": str(exc)}
+
+    # Registered steps
+    checks["steps"] = list(STEP_HANDLERS.keys())
+
+    return StepResult(
+        output_urls=[],
+        credits_used=0,
+        payload=checks,
+    )
+
+
 STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
     "generate_video": process_generate_video,
     "upscale": process_upscale,
@@ -656,6 +690,7 @@ STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
     "music": process_music,
     "sfx": process_sfx,
     "assemble": process_assemble,
+    "health_check": process_health_check,
 }
 
 
@@ -712,4 +747,9 @@ def handler(event):
     return _handler_impl(event)
 
 
-runpod.serverless.start({"handler": handler})
+if __name__ == "__main__":
+    # Local testing
+    test_event = {"input": {"step": "health_check"}}
+    print(handler(test_event))
+else:
+    runpod.serverless.start({"handler": handler})
