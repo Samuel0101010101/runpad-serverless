@@ -2,13 +2,23 @@ FROM runpod/pytorch:1.0.3-cu1290-torch290-ubuntu2204
 
 WORKDIR /app
 
-# System dependencies
+# System dependencies (runtime + build)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsm6 \
     libxext6 \
     libgl1 \
+    git \
     git-lfs \
+    # Build deps for PyAV (audiocraft dependency)
+    pkg-config \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libavfilter-dev \
+    libswscale-dev \
+    libswresample-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies
