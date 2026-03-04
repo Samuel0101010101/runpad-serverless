@@ -657,7 +657,7 @@ def process_health_check(job_input: Dict[str, Any]) -> StepResult:
         checks["cuda"] = {
             "available": True,
             "device": torch.cuda.get_device_name(0),
-            "vram_gb": round(torch.cuda.get_device_properties(0).total_mem / (1024**3), 1),
+            "vram_gb": round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1),
         }
     else:
         checks["cuda"] = {"available": False}
