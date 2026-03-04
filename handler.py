@@ -694,10 +694,9 @@ STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
 }
 
 
-def _handler_impl(event: Dict[str, Any]) -> Dict[str, Any]:
-    job_input = event.get("input", {})
+def _handler_impl(job_input: Dict[str, Any]) -> Dict[str, Any]:
     step = job_input.get("step")
-    logger.info("Received step=%s", step)
+    logger.info("Processing step=%s", step)
 
     if step not in STEP_HANDLERS:
         return response(
@@ -744,12 +743,41 @@ def _handler_impl(event: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def handler(event):
-    return _handler_impl(event)
+    """RunPod serverless handler with resilient event unwrapping."""
+    logger.info("RAW EVENT TYPE: %s", type(event).__name__)
+    try:
+        logger.info("RAW EVENT: %s", json.dumps(event) if isinstance(event, dict) else str(event)[:500])
+    except Exception:
+        logger.info("RAW EVENT (repr): %s", repr(event)[:500])
+
+    job_input = None
+    if isinstance(event, dict):
+        if "input" in event:
+            job_input = event["input"]
+            logger.info("Extracted job_input from event['input']")
+        elif "step" in event:
+            job_input = event
+            logger.info("Using event directly as job_input (flat format)")
+
+    if job_input is None:
+        keys = list(event.keys()) if isinstance(event, dict) else type(event).__name__
+        logger.error("Could not extract job_input. Event keys: %s", keys)
+        return response(
+            status="failed",
+            error=f"Invalid event format. Expected 'input' or 'step' key, got keys: {keys}",
+            retry_recommended=False,
+        )
+
+    return _handler_impl(job_input)
 
 
 if __name__ == "__main__":
-    # Local testing
-    test_event = {"input": {"step": "health_check"}}
-    print(handler(test_event))
-else:
-    runpod.serverless.start({"handler": handler})
+    import sys
+
+    if "--test" in sys.argv:
+        # Local testing only
+        test_event = {"input": {"step": "health_check"}}
+        print(handler(test_event))
+    else:
+        # Production: start the RunPod serverless polling loop
+        runpod.serverless.start({"handler": handler})
