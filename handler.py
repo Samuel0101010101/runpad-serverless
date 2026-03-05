@@ -10,6 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+# Disable HuggingFace Xet and hf_transfer downloaders BEFORE any HF imports.
+# Both crash on large sharded models ("receiver dropped").
+os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
 import requests
 import runpod
 
@@ -28,13 +33,30 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("tarik-handler")
 
 
-MODEL_CACHE_DIR = Path("/workspace/models")
+# Use /workspace/models if a network volume is mounted (has >50GB free),
+# otherwise fall back to /tmp/models to avoid "No space left on device".
+def _pick_cache_dir() -> Path:
+    ws = Path("/workspace/models")
+    ws.mkdir(parents=True, exist_ok=True)
+    try:
+        st = os.statvfs("/workspace")
+        free_gb = (st.f_bavail * st.f_frsize) / (1024**3)
+        if free_gb > 10:
+            return ws
+    except OSError:
+        pass
+    fallback = Path("/tmp/models")
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+MODEL_CACHE_DIR = _pick_cache_dir()
 TMP_DIR = Path("/tmp")
-MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 os.environ.setdefault("HF_HOME", str(MODEL_CACHE_DIR / "hf"))
 os.environ.setdefault("TRANSFORMERS_CACHE", str(MODEL_CACHE_DIR / "transformers"))
+logger.info("Model cache: %s", MODEL_CACHE_DIR)
 
 
 WAN = "wan_i2v_14b"

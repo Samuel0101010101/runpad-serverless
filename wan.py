@@ -10,10 +10,11 @@ from pathlib import Path
 
 import torch
 
-# Disable hf_transfer (Rust parallel downloader) — it crashes on large sharded
-# models with "File Reconstruction Error: receiver dropped".  The default Python
-# downloader is slower but reliable.
+# Disable hf_transfer and xet downloaders — both crash on large sharded models
+# with "File Reconstruction Error: receiver dropped".  Fall back to the reliable
+# default Python downloader.
 os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 from diffusers import WanImageToVideoPipeline
 from diffusers.utils import export_to_video
