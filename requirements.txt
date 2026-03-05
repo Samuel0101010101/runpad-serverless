@@ -25,4 +25,3 @@ einops
 flashy
 lameenc
 num2words
-spacy
