@@ -670,6 +670,53 @@ def process_assemble(job_input: Dict[str, Any]) -> StepResult:
     )
 
 
+REFORMAT_SPECS = {
+    "16:9": (1920, 1080),
+    "9:16": (1080, 1920),
+    "1:1": (1080, 1080),
+    "4:5": (1080, 1350),
+    "youtube": (1920, 1080),
+    "tiktok": (1080, 1920),
+    "instagram": (1080, 1080),
+    "reels": (1080, 1350),
+}
+
+
+def process_reformat(job_input: Dict[str, Any]) -> StepResult:
+    """Reformat a video to a target aspect ratio / platform."""
+    source_url = job_input["source_url"]
+    target_aspect = job_input.get("target_aspect", "16:9")
+
+    spec = REFORMAT_SPECS.get(target_aspect)
+    if spec is None:
+        raise ValueError(
+            f"Unknown target_aspect '{target_aspect}'. "
+            f"Valid: {list(REFORMAT_SPECS.keys())}"
+        )
+    width, height = spec
+    source_path = download_to_tmp(source_url, "reformat_source.mp4")
+    output_path = TMP_DIR / f"reformatted_{target_aspect.replace(':', 'x')}_{uuid.uuid4().hex}.mp4"
+
+    vf = (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height}"
+    )
+    run_ffmpeg([
+        "ffmpeg", "-y", "-i", str(source_path),
+        "-vf", vf,
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-c:a", "aac", "-b:a", "192k",
+        str(output_path),
+    ])
+
+    signed_url = upload_file_to_r2(output_path, f"tarik/reformat/{target_aspect.replace(':', 'x')}")
+    return StepResult(
+        output_urls=[signed_url],
+        credits_used=2,
+        payload={"target_aspect": target_aspect, "width": width, "height": height},
+    )
+
+
 def process_health_check(job_input: Dict[str, Any]) -> StepResult:
     """Lightweight smoke test: verifies CUDA, R2, and handler wiring."""
     checks: Dict[str, Any] = {}
@@ -712,6 +759,7 @@ STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
     "music": process_music,
     "sfx": process_sfx,
     "assemble": process_assemble,
+    "reformat": process_reformat,
     "health_check": process_health_check,
 }
 
