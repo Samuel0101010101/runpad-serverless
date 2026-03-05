@@ -5,19 +5,19 @@ WORKDIR /app
 # Prevent basicsr from compiling CUDA extensions (uses PyTorch fallbacks at runtime)
 ENV BASICSR_EXT=False
 
-# Single layer: system deps + all pip installs + cleanup
+# Layer 1: system deps (cached unless Dockerfile base changes)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg libsm6 libxext6 libgl1 git \
-    && pip install --no-cache-dir --prefer-binary \
-        runpod requests boto3 \
-        diffusers transformers accelerate sentencepiece Pillow \
-        opencv-python-headless openai-whisper \
-        av encodec einops flashy lameenc num2words spacy \
+    && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+# Layer 2: pip requirements (cached unless requirements.txt changes)
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt \
     && pip install --no-cache-dir --no-deps basicsr realesrgan gfpgan \
     && pip install --no-cache-dir --no-deps "audiocraft @ git+https://github.com/facebookresearch/audiocraft.git" \
-    && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* /tmp/* /root/.cache
+    && rm -rf /tmp/* /root/.cache
 
-# Copy handler and model backends
+# Layer 3: application code (rebuilds in seconds on code changes)
 COPY handler.py wan.py realesrgan_backend.py wav2lip_backend.py whisper_model.py audiocraft_backend.py ./
 
 CMD ["python", "-u", "handler.py"]

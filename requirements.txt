@@ -17,3 +17,12 @@ opencv-python-headless>=4.8.0
 
 # Whisper
 openai-whisper>=20231117
+
+# AudioCraft dependencies (audiocraft itself installed with --no-deps)
+av
+encodec
+einops
+flashy
+lameenc
+num2words
+spacy
