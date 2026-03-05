@@ -14,7 +14,7 @@ from PIL import Image
 
 logger = logging.getLogger("tarik-handler.wan")
 
-MODEL_ID = "Wan-AI/Wan2.1-I2V-14B-480P"
+MODEL_ID = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
 DEFAULT_NUM_FRAMES = 81  # ~5s at 16fps
 DEFAULT_FPS = 16
 RESOLUTION_MAP = {
