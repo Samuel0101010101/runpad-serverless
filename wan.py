@@ -5,10 +5,17 @@ expected by handler.py's run_generate_video().
 """
 
 import logging
+import os
 from pathlib import Path
 
 import torch
-from diffusers import DiffusionPipeline
+
+# Disable hf_transfer (Rust parallel downloader) — it crashes on large sharded
+# models with "File Reconstruction Error: receiver dropped".  The default Python
+# downloader is slower but reliable.
+os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
+
+from diffusers import WanImageToVideoPipeline
 from diffusers.utils import export_to_video
 from PIL import Image
 
@@ -68,11 +75,12 @@ class WanModel:
 def load_wan_model(cache_dir: str) -> WanModel:
     """Entry point called by handler via WAN_I2V_14B_BACKEND=wan:load_wan_model."""
     logger.info("Loading Wan I2V pipeline from %s (cache=%s)", MODEL_ID, cache_dir)
-    pipe = DiffusionPipeline.from_pretrained(
+    pipe = WanImageToVideoPipeline.from_pretrained(
         MODEL_ID,
         cache_dir=cache_dir,
         torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
     )
-    pipe.to("cuda")
-    logger.info("Wan I2V pipeline loaded on CUDA")
+    pipe.enable_model_cpu_offload()
+    logger.info("Wan I2V pipeline loaded with CPU offload")
     return WanModel(pipe)
