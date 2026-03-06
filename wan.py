@@ -76,6 +76,8 @@ class WanModel:
 def load_wan_model(cache_dir: str) -> WanModel:
     """Entry point called by handler via WAN_I2V_14B_BACKEND=wan:load_wan_model."""
     logger.info("Loading Wan I2V pipeline from %s (cache=%s)", MODEL_ID, cache_dir)
+    offload_dir = os.path.join(cache_dir, "offload")
+    os.makedirs(offload_dir, exist_ok=True)
     pipe = WanImageToVideoPipeline.from_pretrained(
         MODEL_ID,
         cache_dir=cache_dir,
@@ -83,5 +85,6 @@ def load_wan_model(cache_dir: str) -> WanModel:
         low_cpu_mem_usage=True,
     )
     pipe.enable_model_cpu_offload()
+    pipe.enable_vae_slicing()
     logger.info("Wan I2V pipeline loaded with CPU offload")
     return WanModel(pipe)

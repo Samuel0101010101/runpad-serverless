@@ -54,6 +54,15 @@ MODEL_CACHE_DIR = _pick_cache_dir()
 TMP_DIR = Path("/tmp")
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 
+# Point all temp/cache dirs to the volume so large model loads don't
+# fill up the tiny container root disk.
+OFFLOAD_DIR = MODEL_CACHE_DIR / "offload"
+OFFLOAD_DIR.mkdir(parents=True, exist_ok=True)
+if str(MODEL_CACHE_DIR).startswith("/workspace"):
+    os.environ.setdefault("TMPDIR", str(MODEL_CACHE_DIR / "tmp"))
+    os.environ.setdefault("TORCH_HOME", str(MODEL_CACHE_DIR / "torch"))
+    Path(os.environ["TMPDIR"]).mkdir(parents=True, exist_ok=True)
+    Path(os.environ["TORCH_HOME"]).mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("HF_HOME", str(MODEL_CACHE_DIR / "hf"))
 os.environ.setdefault("TRANSFORMERS_CACHE", str(MODEL_CACHE_DIR / "transformers"))
 logger.info("Model cache: %s", MODEL_CACHE_DIR)
