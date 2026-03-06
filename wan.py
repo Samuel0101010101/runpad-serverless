@@ -75,16 +75,28 @@ class WanModel:
 
 def load_wan_model(cache_dir: str) -> WanModel:
     """Entry point called by handler via WAN_I2V_14B_BACKEND=wan:load_wan_model."""
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is required for Wan I2V but not available on this worker"
+        )
+
     logger.info("Loading Wan I2V pipeline from %s (cache=%s)", MODEL_ID, cache_dir)
     offload_dir = os.path.join(cache_dir, "offload")
     os.makedirs(offload_dir, exist_ok=True)
+
+    logger.info(
+        "GPU: %s, VRAM: %.1f GB",
+        torch.cuda.get_device_name(0),
+        torch.cuda.get_device_properties(0).total_memory / (1024**3),
+    )
+
     pipe = WanImageToVideoPipeline.from_pretrained(
         MODEL_ID,
         cache_dir=cache_dir,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
     )
-    pipe.enable_model_cpu_offload()
+    pipe.enable_model_cpu_offload(gpu_id=0)
     pipe.enable_vae_slicing()
     logger.info("Wan I2V pipeline loaded with CPU offload")
     return WanModel(pipe)

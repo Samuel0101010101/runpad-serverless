@@ -25,8 +25,13 @@ except Exception:  # pragma: no cover - runtime dependency in RunPod image
 
 try:
     import torch
-except Exception:  # pragma: no cover - runtime dependency in RunPod image
+except Exception as _torch_err:  # pragma: no cover - runtime dependency in RunPod image
     torch = None
+    # Log import failure so we can diagnose CUDA issues on workers
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    logging.getLogger("tarik-handler").error(
+        "torch import failed: %s", _torch_err
+    )
 
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -398,6 +403,14 @@ def response(
 
 
 def process_generate_video(job_input: Dict[str, Any]) -> StepResult:
+    # Fail fast if no GPU — Wan 14B requires CUDA
+    if torch is None or not torch.cuda.is_available():
+        raise ModelLoadError(
+            "CUDA is not available on this worker. "
+            "generate_video requires a GPU. "
+            f"torch={'missing' if torch is None else 'loaded'}, "
+            f"nvidia-smi: {_nvidia_smi_summary()}"
+        )
     image_url = job_input["image_url"]
     motion_prompt = job_input.get("motion_prompt", "")
     model = load_model(WAN)
@@ -726,6 +739,33 @@ def process_reformat(job_input: Dict[str, Any]) -> StepResult:
     )
 
 
+def _nvidia_smi_summary() -> str:
+    """Run nvidia-smi and return a short summary string."""
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,driver_version,memory.total",
+             "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return r.stdout.strip() or r.stderr.strip() or "(no output)"
+    except Exception as exc:
+        return f"(nvidia-smi failed: {exc})"
+
+
+def _disk_usage_summary() -> Dict[str, Any]:
+    """Return free/total disk space for key mount points."""
+    info = {}
+    for mount in ("/", "/workspace", "/tmp"):
+        try:
+            st = os.statvfs(mount)
+            total_gb = round((st.f_blocks * st.f_frsize) / (1024**3), 1)
+            free_gb = round((st.f_bavail * st.f_frsize) / (1024**3), 1)
+            info[mount] = {"total_gb": total_gb, "free_gb": free_gb}
+        except OSError:
+            info[mount] = "not mounted"
+    return info
+
+
 def process_health_check(job_input: Dict[str, Any]) -> StepResult:
     """Lightweight smoke test: verifies CUDA, R2, and handler wiring."""
     checks: Dict[str, Any] = {}
@@ -738,7 +778,23 @@ def process_health_check(job_input: Dict[str, Any]) -> StepResult:
             "vram_gb": round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1),
         }
     else:
-        checks["cuda"] = {"available": False}
+        checks["cuda"] = {
+            "available": False,
+            "torch_loaded": torch is not None,
+            "nvidia_smi": _nvidia_smi_summary(),
+        }
+
+    # Disk space
+    checks["disk"] = _disk_usage_summary()
+
+    # Env diagnostics
+    checks["env"] = {
+        "MODEL_CACHE_DIR": str(MODEL_CACHE_DIR),
+        "TMPDIR": os.environ.get("TMPDIR", "(not set)"),
+        "TORCH_HOME": os.environ.get("TORCH_HOME", "(not set)"),
+        "HF_HOME": os.environ.get("HF_HOME", "(not set)"),
+        "OFFLOAD_DIR": str(OFFLOAD_DIR),
+    }
 
     # R2 upload smoke test
     try:
