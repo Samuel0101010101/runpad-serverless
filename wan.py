@@ -1,7 +1,7 @@
 """Wan 2.2 TI2V-5B backend for Tarik pipeline.
 
-Uses the unified WanPipeline which supports both text-to-video and image-to-video
-generation at 720P 24fps.  Fits on RTX 4090 (24 GB) with CPU offload.
+Uses WanImageToVideoPipeline for image-to-video generation at 720P 24fps.
+Fits on RTX 4090 (24 GB) with CPU offload.
 
 Provides load_wan_model(cache_dir) -> WanModel with .generate_video() interface
 expected by handler.py's run_generate_video().
@@ -19,7 +19,7 @@ import torch
 os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
-from diffusers import WanPipeline, AutoencoderKLWan
+from diffusers import WanImageToVideoPipeline, AutoencoderKLWan
 from diffusers.utils import export_to_video
 from PIL import Image
 
@@ -106,12 +106,12 @@ def load_wan_model(cache_dir: str) -> WanModel:
         cache_dir=cache_dir,
     )
 
-    pipe = WanPipeline.from_pretrained(
+    pipe = WanImageToVideoPipeline.from_pretrained(
         MODEL_ID,
         vae=vae,
         cache_dir=cache_dir,
         torch_dtype=torch.bfloat16,
     )
     pipe.enable_model_cpu_offload(gpu_id=0)
-    logger.info("Wan TI2V-5B pipeline loaded with CPU offload")
+    logger.info("Wan TI2V-5B I2V pipeline loaded with CPU offload")
     return WanModel(pipe)
