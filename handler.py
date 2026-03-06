@@ -39,31 +39,23 @@ logger = logging.getLogger("tarik-handler")
 
 
 # Use /workspace/models if a network volume is mounted (has >50GB free),
-# Check common RunPod volume mount points.
-_VOLUME_CANDIDATES = ["/runpod-volume", "/workspace"]
-
-
-def _find_volume() -> Optional[str]:
-    """Return the path of a real network volume, or None."""
-    root_dev = os.stat("/").st_dev
-    for candidate in _VOLUME_CANDIDATES:
-        try:
-            if os.stat(candidate).st_dev != root_dev:
-                return candidate
-        except OSError:
-            continue
-    return None
-
-
-VOLUME_PATH = _find_volume()
+# otherwise fall back to /tmp/models to avoid "No space left on device".
+def _is_volume_mounted() -> bool:
+    """Check if /workspace is a real volume (different device from /)."""
+    try:
+        root_dev = os.stat("/").st_dev
+        ws_dev = os.stat("/workspace").st_dev
+        return ws_dev != root_dev
+    except OSError:
+        return False
 
 
 def _pick_cache_dir() -> Path:
-    if VOLUME_PATH:
-        d = Path(VOLUME_PATH) / "models"
-        d.mkdir(parents=True, exist_ok=True)
-        logger.info("Network volume detected at %s", VOLUME_PATH)
-        return d
+    if _is_volume_mounted():
+        ws = Path("/workspace/models")
+        ws.mkdir(parents=True, exist_ok=True)
+        logger.info("Network volume detected at /workspace")
+        return ws
     logger.warning("No network volume detected — falling back to /tmp/models")
     fallback = Path("/tmp/models")
     fallback.mkdir(parents=True, exist_ok=True)
@@ -78,7 +70,7 @@ TMP_DIR.mkdir(parents=True, exist_ok=True)
 # fill up the tiny container root disk.
 OFFLOAD_DIR = MODEL_CACHE_DIR / "offload"
 OFFLOAD_DIR.mkdir(parents=True, exist_ok=True)
-if VOLUME_PATH:
+if str(MODEL_CACHE_DIR).startswith("/workspace"):
     os.environ.setdefault("TMPDIR", str(MODEL_CACHE_DIR / "tmp"))
     os.environ.setdefault("TORCH_HOME", str(MODEL_CACHE_DIR / "torch"))
     Path(os.environ["TMPDIR"]).mkdir(parents=True, exist_ok=True)
@@ -770,8 +762,7 @@ def _nvidia_smi_summary() -> str:
 def _disk_usage_summary() -> Dict[str, Any]:
     """Return free/total disk space for key mount points."""
     info = {}
-    mounts = ["/", "/tmp"] + _VOLUME_CANDIDATES
-    for mount in mounts:
+    for mount in ("/", "/workspace", "/tmp"):
         try:
             st = os.statvfs(mount)
             total_gb = round((st.f_blocks * st.f_frsize) / (1024**3), 1)
@@ -805,18 +796,18 @@ def process_health_check(job_input: Dict[str, Any]) -> StepResult:
 
     # Volume diagnostics
     checks["volume"] = {
-        "path": VOLUME_PATH,
-        "mounted": VOLUME_PATH is not None,
+        "mounted": _is_volume_mounted(),
     }
-    if VOLUME_PATH:
-        try:
-            checks["volume"]["contents"] = os.listdir(VOLUME_PATH)[:30]
-        except OSError as exc:
-            checks["volume"]["contents"] = str(exc)
-        try:
-            checks["volume"]["models_contents"] = os.listdir(str(MODEL_CACHE_DIR))[:30]
-        except OSError as exc:
-            checks["volume"]["models_contents"] = str(exc)
+    try:
+        ws_contents = os.listdir("/workspace")
+        checks["volume"]["workspace_contents"] = ws_contents[:30]
+    except OSError as exc:
+        checks["volume"]["workspace_contents"] = str(exc)
+    try:
+        model_contents = os.listdir("/workspace/models")
+        checks["volume"]["models_contents"] = model_contents[:30]
+    except OSError as exc:
+        checks["volume"]["models_contents"] = str(exc)
 
     # Env diagnostics
     checks["env"] = {
