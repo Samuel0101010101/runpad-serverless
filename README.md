@@ -52,7 +52,7 @@ Optional:
 
 Model backend hooks (optional, but needed for real inference):
 
-- `WAN_I2V_14B_BACKEND`
+- `WAN_TI2V_5B_BACKEND`
 - `REALESRGAN_X4_BACKEND`
 - `WAV2LIP_GFPGAN_BACKEND`
 - `WHISPER_LARGE_V3_BACKEND`

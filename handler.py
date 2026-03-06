@@ -73,7 +73,7 @@ os.environ.setdefault("TRANSFORMERS_CACHE", str(MODEL_CACHE_DIR / "transformers"
 logger.info("Model cache: %s", MODEL_CACHE_DIR)
 
 
-WAN = "wan_i2v_14b"
+WAN = "wan_ti2v_5b"
 REALESRGAN = "realesrgan_x4"
 WAV2LIP = "wav2lip_gfpgan"
 WHISPER = "whisper_large_v3"
@@ -82,7 +82,7 @@ AUDIOGEN = "audiogen"
 
 
 MODEL_VRAM_HINTS_GB = {
-    WAN: 75,
+    WAN: 20,
     REALESRGAN: 2,
     WAV2LIP: 8,
     WHISPER: 10,
@@ -248,7 +248,7 @@ def run_generate_video(model: Any, image_path: Path, motion_prompt: str, output_
             image_path=str(image_path),
             motion_prompt=motion_prompt,
             duration_seconds=5,
-            resolution="480p",
+            resolution="720p",
             output_path=str(output_path),
         )
         return
@@ -259,7 +259,7 @@ def run_generate_video(model: Any, image_path: Path, motion_prompt: str, output_
             "image": str(image_path),
             "motion_prompt": motion_prompt,
             "duration_seconds": 5,
-            "resolution": "480p",
+            "resolution": "720p",
             "model": getattr(model, "name", "unknown"),
         },
     )
@@ -403,7 +403,7 @@ def response(
 
 
 def process_generate_video(job_input: Dict[str, Any]) -> StepResult:
-    # Fail fast if no GPU — Wan 14B requires CUDA
+    # Fail fast if no GPU — Wan TI2V-5B requires CUDA
     if torch is None or not torch.cuda.is_available():
         raise ModelLoadError(
             "CUDA is not available on this worker. "
