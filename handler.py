@@ -59,7 +59,7 @@ os.environ.setdefault("TRANSFORMERS_CACHE", str(MODEL_CACHE_DIR / "transformers"
 logger.info("Model cache: %s", MODEL_CACHE_DIR)
 
 
-WAN = "wan_i2v_5b"
+WAN = "wan_i2v_14b"
 REALESRGAN = "realesrgan_x4"
 WAV2LIP = "wav2lip_gfpgan"
 WHISPER = "whisper_large_v3"
@@ -68,7 +68,7 @@ AUDIOGEN = "audiogen"
 
 
 MODEL_VRAM_HINTS_GB = {
-    WAN: 12,
+    WAN: 75,
     REALESRGAN: 2,
     WAV2LIP: 8,
     WHISPER: 10,
