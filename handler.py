@@ -40,16 +40,23 @@ logger = logging.getLogger("tarik-handler")
 
 # Use /workspace/models if a network volume is mounted (has >50GB free),
 # otherwise fall back to /tmp/models to avoid "No space left on device".
-def _pick_cache_dir() -> Path:
-    ws = Path("/workspace/models")
-    ws.mkdir(parents=True, exist_ok=True)
+def _is_volume_mounted() -> bool:
+    """Check if /workspace is a real volume (different device from /)."""
     try:
-        st = os.statvfs("/workspace")
-        free_gb = (st.f_bavail * st.f_frsize) / (1024**3)
-        if free_gb > 10:
-            return ws
+        root_dev = os.stat("/").st_dev
+        ws_dev = os.stat("/workspace").st_dev
+        return ws_dev != root_dev
     except OSError:
-        pass
+        return False
+
+
+def _pick_cache_dir() -> Path:
+    if _is_volume_mounted():
+        ws = Path("/workspace/models")
+        ws.mkdir(parents=True, exist_ok=True)
+        logger.info("Network volume detected at /workspace")
+        return ws
+    logger.warning("No network volume detected — falling back to /tmp/models")
     fallback = Path("/tmp/models")
     fallback.mkdir(parents=True, exist_ok=True)
     return fallback
@@ -786,6 +793,21 @@ def process_health_check(job_input: Dict[str, Any]) -> StepResult:
 
     # Disk space
     checks["disk"] = _disk_usage_summary()
+
+    # Volume diagnostics
+    checks["volume"] = {
+        "mounted": _is_volume_mounted(),
+    }
+    try:
+        ws_contents = os.listdir("/workspace")
+        checks["volume"]["workspace_contents"] = ws_contents[:30]
+    except OSError as exc:
+        checks["volume"]["workspace_contents"] = str(exc)
+    try:
+        model_contents = os.listdir("/workspace/models")
+        checks["volume"]["models_contents"] = model_contents[:30]
+    except OSError as exc:
+        checks["volume"]["models_contents"] = str(exc)
 
     # Env diagnostics
     checks["env"] = {
