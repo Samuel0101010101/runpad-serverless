@@ -24,6 +24,7 @@ av
 encodec
 einops
 flashy
+julius
 lameenc
 num2words
 soundfile
