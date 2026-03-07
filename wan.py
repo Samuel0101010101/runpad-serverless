@@ -113,5 +113,6 @@ def load_wan_model(cache_dir: str) -> WanModel:
         torch_dtype=torch.bfloat16,
     )
     pipe.enable_model_cpu_offload(gpu_id=0)
-    logger.info("Wan TI2V-5B I2V pipeline loaded with CPU offload")
+    pipe.vae.enable_tiling()
+    logger.info("Wan TI2V-5B I2V pipeline loaded with CPU offload + VAE tiling")
     return WanModel(pipe)
