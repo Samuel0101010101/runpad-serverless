@@ -14,6 +14,7 @@ ftfy
 
 # Upscaling / face restoration
 opencv-python-headless>=4.8.0
+scipy
 
 # Whisper
 openai-whisper>=20231117
@@ -25,3 +26,4 @@ einops
 flashy
 lameenc
 num2words
+soundfile
