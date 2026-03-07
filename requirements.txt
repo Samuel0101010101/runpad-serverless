@@ -28,3 +28,4 @@ julius
 lameenc
 num2words
 soundfile
+xformers
