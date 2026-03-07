@@ -7,7 +7,7 @@ ENV BASICSR_EXT=False
 
 # Layer 1: system deps (cached unless Dockerfile base changes)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg libsm6 libxext6 libgl1 git \
+        ffmpeg libsm6 libxext6 libgl1 git libsndfile1 \
     && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Layer 2: pip requirements (cached unless requirements.txt changes)
