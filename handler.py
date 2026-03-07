@@ -236,6 +236,12 @@ def upload_file_to_r2(path: Path, key_prefix: str) -> str:
     key = f"{key_prefix}/{uuid.uuid4().hex}_{path.name}"
     s3 = _get_r2_client()
     s3.upload_file(str(path), bucket, key)
+
+    # Prefer public URL if R2_PUBLIC_URL is set (presigned URLs 403 on R2)
+    public_base = os.getenv("R2_PUBLIC_URL", "").rstrip("/")
+    if public_base:
+        return f"{public_base}/{key}"
+
     url = s3.generate_presigned_url(
         "get_object",
         Params={"Bucket": bucket, "Key": key},
