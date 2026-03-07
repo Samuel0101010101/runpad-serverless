@@ -837,6 +837,16 @@ def process_health_check(job_input: Dict[str, Any]) -> StepResult:
     # Registered steps
     checks["steps"] = list(STEP_HANDLERS.keys())
 
+    # Import diagnostics for backends
+    import_checks = {}
+    for mod_name in ["scipy", "soundfile", "cv2", "audiocraft", "audiocraft.models"]:
+        try:
+            __import__(mod_name)
+            import_checks[mod_name] = "ok"
+        except Exception as exc:
+            import_checks[mod_name] = str(exc)
+    checks["imports"] = import_checks
+
     return StepResult(
         output_urls=[],
         credits_used=0,
