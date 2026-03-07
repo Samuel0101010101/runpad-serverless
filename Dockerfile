@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Layer 2: pip requirements (cached unless requirements.txt changes)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt \
-    && pip install --no-cache-dir "diffusers @ git+https://github.com/huggingface/diffusers.git" \
+    && pip install --no-cache-dir "diffusers @ git+https://github.com/huggingface/diffusers.git@e747fe4a942ce379d73a975a82f9e4c484c74ba2" \
     && pip install --no-cache-dir --no-deps basicsr realesrgan gfpgan \
     && pip install --no-cache-dir --no-deps "audiocraft @ git+https://github.com/facebookresearch/audiocraft.git" \
     && rm -rf /tmp/* /root/.cache
