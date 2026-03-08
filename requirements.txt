@@ -29,3 +29,10 @@ lameenc
 num2words
 soundfile
 xformers
+spacy==3.7.6
+hydra-core>=1.1
+hydra_colorlog
+demucs
+librosa
+torchmetrics
+protobuf
