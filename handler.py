@@ -781,7 +781,7 @@ def _disk_usage_summary() -> Dict[str, Any]:
 
 def process_health_check(job_input: Dict[str, Any]) -> StepResult:
     """Lightweight smoke test: verifies CUDA, R2, and handler wiring."""
-    checks: Dict[str, Any] = {}
+    checks: Dict[str, Any] = {"build": "89ec366-v2"}
 
     # CUDA availability
     if torch is not None and torch.cuda.is_available():
