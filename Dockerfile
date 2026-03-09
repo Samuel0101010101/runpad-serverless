@@ -15,7 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt \
     && pip install --no-cache-dir "diffusers @ git+https://github.com/huggingface/diffusers.git@e747fe4a942ce379d73a975a82f9e4c484c74ba2" \
     && pip install --no-cache-dir --no-deps basicsr realesrgan gfpgan \
-    && pip install --no-cache-dir --no-deps demucs openai-whisper \
+    && pip install --no-cache-dir --no-deps xformers==0.0.34 demucs openai-whisper \
     && pip install --no-cache-dir --no-deps "audiocraft @ git+https://github.com/facebookresearch/audiocraft.git@v1.3.0" \
     && rm -rf /tmp/* /root/.cache
 
