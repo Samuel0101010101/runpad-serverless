@@ -56,8 +56,7 @@ def load_music_model(cache_dir: str) -> MusicGenModel:
     """Entry point: MUSICGEN_LARGE_BACKEND=audiocraft_backend:load_music_model."""
     os.environ.setdefault("AUDIOCRAFT_CACHE_DIR", cache_dir)
     logger.info("Loading MusicGen Large (cache=%s)", cache_dir)
-    model = MusicGen.get_pretrained(MUSICGEN_MODEL_ID)
-    model.to("cuda")
+    model = MusicGen.get_pretrained(MUSICGEN_MODEL_ID, device="cuda")
     logger.info("MusicGen Large loaded on CUDA")
     return MusicGenModel(model)
 
@@ -66,7 +65,6 @@ def load_sfx_model(cache_dir: str) -> AudioGenModel:
     """Entry point: AUDIOGEN_BACKEND=audiocraft_backend:load_sfx_model."""
     os.environ.setdefault("AUDIOCRAFT_CACHE_DIR", cache_dir)
     logger.info("Loading AudioGen Medium (cache=%s)", cache_dir)
-    model = AudioGen.get_pretrained(AUDIOGEN_MODEL_ID)
-    model.to("cuda")
+    model = AudioGen.get_pretrained(AUDIOGEN_MODEL_ID, device="cuda")
     logger.info("AudioGen Medium loaded on CUDA")
     return AudioGenModel(model)
