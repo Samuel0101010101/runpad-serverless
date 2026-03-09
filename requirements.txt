@@ -6,7 +6,7 @@ boto3>=1.34.0
 # torch & torchaudio are pre-installed in the base Docker image
 
 # Wan 2.2 TI2V (diffusers installed from git in Dockerfile for WanPipeline support)
-transformers>=4.40.0,<5.0.0
+transformers>=4.40.0,<4.50.0
 accelerate>=0.30.0
 sentencepiece>=0.2.0
 Pillow>=10.0.0
