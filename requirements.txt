@@ -3,11 +3,8 @@ runpod>=1.6.0
 requests>=2.32.0
 boto3>=1.34.0
 
-# Pin torch ecosystem to match base image (runpod/pytorch cu1281-torch290)
-# These are pre-installed but we pin to prevent deps from upgrading them
-torch==2.9.0
-torchaudio==2.9.0
-torchvision==0.22.0
+# torch, torchaudio, torchvision are pre-installed in the base Docker image
+# Do NOT list them here; instead we use --no-deps for packages that would upgrade them
 
 # Wan 2.2 TI2V (diffusers installed from git in Dockerfile for WanPipeline support)
 transformers>=4.40.0,<4.50.0
@@ -20,10 +17,12 @@ ftfy
 opencv-python-headless>=4.8.0
 scipy
 
-# Whisper
-openai-whisper>=20231117
+# Whisper deps (whisper itself installed with --no-deps in Dockerfile)
+tiktoken
+more-itertools
+numba
 
-# AudioCraft dependencies (audiocraft itself installed with --no-deps)
+# AudioCraft / demucs deps (audiocraft, demucs, xformers installed with --no-deps)
 av
 encodec
 einops
@@ -32,11 +31,11 @@ julius
 lameenc
 num2words
 soundfile
-xformers
 spacy==3.7.6
 hydra-core>=1.1
 hydra_colorlog
-demucs
 librosa
 torchmetrics
 protobuf
+openunmix
+dora_search
