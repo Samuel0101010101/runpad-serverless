@@ -3,7 +3,11 @@ runpod>=1.6.0
 requests>=2.32.0
 boto3>=1.34.0
 
-# torch & torchaudio are pre-installed in the base Docker image
+# Pin torch ecosystem to match base image (runpod/pytorch cu1281-torch290)
+# These are pre-installed but we pin to prevent deps from upgrading them
+torch==2.9.0
+torchaudio==2.9.0
+torchvision==0.22.0
 
 # Wan 2.2 TI2V (diffusers installed from git in Dockerfile for WanPipeline support)
 transformers>=4.40.0,<4.50.0
