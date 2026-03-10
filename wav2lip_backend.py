@@ -47,10 +47,10 @@ def _patch_wav2lip_audio(repo_dir: str) -> None:
     with open(audio_py, "r") as f:
         content = f.read()
     # Old: librosa.filters.mel(hp.sample_rate, hp.num_freq, ...)
-    # New: librosa.filters.mel(sr=hp.sample_rate, n_fft=hp.num_freq, ...)
+    # New: librosa.filters.mel(sr=hp.sample_rate, n_fft=hp.n_fft, ...)
     patched = content.replace(
-        "librosa.filters.mel(hp.sample_rate, hp.num_freq,",
-        "librosa.filters.mel(sr=hp.sample_rate, n_fft=hp.num_freq,",
+        "librosa.filters.mel(hp.sample_rate, hp.n_fft,",
+        "librosa.filters.mel(sr=hp.sample_rate, n_fft=hp.n_fft,",
     )
     if patched != content:
         with open(audio_py, "w") as f:
