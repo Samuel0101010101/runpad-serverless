@@ -10,8 +10,8 @@ Matches interfaces expected by handler.py's run_music() and run_sfx().
 import logging
 import os
 
+import soundfile as sf
 import torch
-import torchaudio
 from audiocraft.models import MusicGen, AudioGen
 
 logger = logging.getLogger("tarik-handler.audiocraft")
@@ -32,7 +32,8 @@ class MusicGenModel:
         self.model.set_generation_params(duration=duration_seconds)
         wav = self.model.generate([prompt])  # shape: (1, channels, samples)
         audio = wav[0].cpu()
-        torchaudio.save(output_path, audio, sample_rate=32000)
+        # soundfile expects (samples, channels)
+        sf.write(output_path, audio.numpy().T, samplerate=32000)
         logger.info("Music saved to %s", output_path)
 
 
@@ -48,7 +49,7 @@ class AudioGenModel:
         self.model.set_generation_params(duration=5)
         wav = self.model.generate([prompt])  # shape: (1, channels, samples)
         audio = wav[0].cpu()
-        torchaudio.save(output_path, audio, sample_rate=16000)
+        sf.write(output_path, audio.numpy().T, samplerate=16000)
         logger.info("SFX saved to %s", output_path)
 
 
