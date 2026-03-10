@@ -34,7 +34,28 @@ def _ensure_wav2lip_repo(cache_dir: str) -> str:
             check=True,
             capture_output=True,
         )
+    # Always attempt patch (idempotent) — fixes librosa >= 0.10 compat
+    _patch_wav2lip_audio(repo_dir)
     return repo_dir
+
+
+def _patch_wav2lip_audio(repo_dir: str) -> None:
+    """Fix librosa.filters.mel() call for librosa >= 0.10 compatibility."""
+    audio_py = os.path.join(repo_dir, "audio.py")
+    if not os.path.exists(audio_py):
+        return
+    with open(audio_py, "r") as f:
+        content = f.read()
+    # Old: librosa.filters.mel(hp.sample_rate, hp.num_freq, ...)
+    # New: librosa.filters.mel(sr=hp.sample_rate, n_fft=hp.num_freq, ...)
+    patched = content.replace(
+        "librosa.filters.mel(hp.sample_rate, hp.num_freq,",
+        "librosa.filters.mel(sr=hp.sample_rate, n_fft=hp.num_freq,",
+    )
+    if patched != content:
+        with open(audio_py, "w") as f:
+            f.write(patched)
+        logger.info("Patched Wav2Lip audio.py for librosa >= 0.10")
 
 
 def _download_file(url: str, dest: str) -> None:

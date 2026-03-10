@@ -500,6 +500,7 @@ def process_lipsync(job_input: Dict[str, Any]) -> StepResult:
 
     output_urls: List[str] = []
     failed_indices: List[int] = []
+    errors: List[str] = []
     for idx, clip_url in enumerate(clip_urls):
         try:
             clip_path = download_to_tmp(clip_url, f"scene_{idx}.mp4")
@@ -509,11 +510,13 @@ def process_lipsync(job_input: Dict[str, Any]) -> StepResult:
         except Exception as exc:
             logger.exception("Lipsync failed for clip index %s: %s", idx, exc)
             failed_indices.append(idx)
+            errors.append(f"clip_{idx}: {str(exc)[-500:]}")
 
     return StepResult(
         output_urls=output_urls,
         credits_used=len(output_urls) * 4,
         failed_indices=failed_indices,
+        payload={"errors": errors} if errors else None,
     )
 
 
