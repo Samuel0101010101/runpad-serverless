@@ -17,7 +17,7 @@ import torch
 logger = logging.getLogger("tarik-handler.wav2lip")
 
 WAV2LIP_REPO = "https://github.com/Rudrabha/Wav2Lip.git"
-WAV2LIP_WEIGHTS_URL = "https://iiitaphyd-my.sharepoint.com/personal/radrabha_m_research_iiit_ac_in/_layouts/15/download.aspx?share=EdjI7bZlgApMqsVoEUUXpLsBxqXbn5z8VTmoxp55YNDcIA"
+WAV2LIP_WEIGHTS_URL = "https://huggingface.co/camenduru/Wav2Lip/resolve/main/checkpoints/wav2lip_gan.pth"
 WAV2LIP_WEIGHTS_FILENAME = "wav2lip_gan.pth"
 
 GFPGAN_WEIGHTS_URL = "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth"

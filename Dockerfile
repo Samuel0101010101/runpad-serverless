@@ -16,6 +16,7 @@ COPY xformers-stub/ /tmp/xformers-stub/
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt \
     && pip install --no-cache-dir "diffusers @ git+https://github.com/huggingface/diffusers.git@e747fe4a942ce379d73a975a82f9e4c484c74ba2" \
     && pip install --no-cache-dir --no-deps basicsr realesrgan gfpgan \
+    && python -c "import importlib, pathlib, torchvision; tv=pathlib.Path(torchvision.__file__).parent/'transforms'/'functional_tensor.py'; tv.exists() or tv.write_text('from torchvision.transforms.functional import *\n')" \
     && pip install --no-cache-dir --no-deps /tmp/xformers-stub \
     && pip install --no-cache-dir --no-deps demucs openai-whisper \
     && pip install --no-cache-dir --no-deps "audiocraft @ git+https://github.com/facebookresearch/audiocraft.git@v1.3.0" \
