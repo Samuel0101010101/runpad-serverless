@@ -46,3 +46,8 @@ def memory_efficient_attention(
 
     # Transpose back from (B, H, M, K) -> (B, M, H, K)
     return out.transpose(1, 2)
+
+
+def unbind(x, dim=0):
+    """Drop-in for xformers.ops.unbind — delegates to torch.unbind."""
+    return torch.unbind(x, dim=dim)
