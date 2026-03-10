@@ -44,9 +44,9 @@ class AudioGenModel:
         self.model = model
         self.name = "audiogen"
 
-    def generate_sfx(self, prompt: str, output_path: str = "/tmp/sfx.wav") -> None:
-        logger.info("Generating SFX: %r", prompt[:80])
-        self.model.set_generation_params(duration=5)
+    def generate_sfx(self, prompt: str, duration_seconds: int = 5, output_path: str = "/tmp/sfx.wav") -> None:
+        logger.info("Generating %ds SFX: %r", duration_seconds, prompt[:80])
+        self.model.set_generation_params(duration=duration_seconds)
         wav = self.model.generate([prompt])  # shape: (1, channels, samples)
         audio = wav[0].cpu()
         sf.write(output_path, audio.numpy().T, samplerate=16000)

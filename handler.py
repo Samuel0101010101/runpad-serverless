@@ -316,25 +316,25 @@ def run_transcribe(model: Any, audio_path: Path, srt_path: Path) -> str:
     return "[Mock transcription]"
 
 
-def run_music(model: Any, prompt: str, output_path: Path) -> None:
+def run_music(model: Any, prompt: str, duration_seconds: int, output_path: Path) -> None:
     if hasattr(model, "generate_music"):
-        model.generate_music(prompt=prompt, duration_seconds=30, output_path=str(output_path))
+        model.generate_music(prompt=prompt, duration_seconds=duration_seconds, output_path=str(output_path))
         return
     write_mock_binary(
         output_path,
         "music",
-        {"prompt": prompt, "duration_seconds": 30, "model": getattr(model, "name", "unknown")},
+        {"prompt": prompt, "duration_seconds": duration_seconds, "model": getattr(model, "name", "unknown")},
     )
 
 
-def run_sfx(model: Any, prompt: str, output_path: Path) -> None:
+def run_sfx(model: Any, prompt: str, duration_seconds: int, output_path: Path) -> None:
     if hasattr(model, "generate_sfx"):
-        model.generate_sfx(prompt=prompt, output_path=str(output_path))
+        model.generate_sfx(prompt=prompt, duration_seconds=duration_seconds, output_path=str(output_path))
         return
     write_mock_binary(
         output_path,
         "sfx",
-        {"prompt": prompt, "model": getattr(model, "name", "unknown")},
+        {"prompt": prompt, "duration_seconds": duration_seconds, "model": getattr(model, "name", "unknown")},
     )
 
 
@@ -403,9 +403,11 @@ def response(
     retry_recommended: bool = False,
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    urls = output_urls or []
     payload = {
         "status": status,
-        "output_urls": output_urls or [],
+        "output_urls": urls,
+        "output_url": urls[0] if urls else None,
         "credits_used": credits_used,
         "error": error,
         "retry_recommended": retry_recommended,
@@ -456,7 +458,10 @@ def _upscale_batch(
 
 
 def process_upscale(job_input: Dict[str, Any]) -> StepResult:
+    # Accept single video_url (Lovable) or batch clips (internal)
     clip_urls = list(job_input.get("clips", []))
+    if not clip_urls and job_input.get("video_url"):
+        clip_urls = [job_input["video_url"]]
     if not clip_urls:
         return StepResult(output_urls=[], credits_used=0)
 
@@ -493,7 +498,10 @@ def process_upscale(job_input: Dict[str, Any]) -> StepResult:
 
 
 def process_lipsync(job_input: Dict[str, Any]) -> StepResult:
+    # Accept single video_url (Lovable) or batch clips (internal)
     clip_urls = list(job_input.get("clips", []))
+    if not clip_urls and job_input.get("video_url"):
+        clip_urls = [job_input["video_url"]]
     audio_url = job_input["audio_url"]
     model = load_model(WAV2LIP)
     audio_path = download_to_tmp(audio_url, "dialog_audio")
@@ -520,6 +528,37 @@ def process_lipsync(job_input: Dict[str, Any]) -> StepResult:
     )
 
 
+def _parse_srt_segments(srt_path: Path) -> List[Dict[str, Any]]:
+    """Parse SRT file into [{start, end, text}] segments for Lovable."""
+    segments: List[Dict[str, Any]] = []
+    content = srt_path.read_text(encoding="utf-8").strip()
+    if not content:
+        return segments
+    blocks = content.split("\n\n")
+    for block in blocks:
+        lines = block.strip().split("\n")
+        if len(lines) < 3:
+            continue
+        timestamp_line = lines[1]
+        text = " ".join(lines[2:])
+        parts = timestamp_line.split(" --> ")
+        if len(parts) != 2:
+            continue
+        segments.append({
+            "start": _srt_ts_to_seconds(parts[0].strip()),
+            "end": _srt_ts_to_seconds(parts[1].strip()),
+            "text": text,
+        })
+    return segments
+
+
+def _srt_ts_to_seconds(ts: str) -> float:
+    """Convert SRT timestamp HH:MM:SS,mmm to float seconds."""
+    ts = ts.replace(",", ".")
+    parts = ts.split(":")
+    return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+
+
 def process_transcribe(job_input: Dict[str, Any]) -> StepResult:
     audio_url = job_input["audio_url"]
     model = load_model(WHISPER)
@@ -528,24 +567,35 @@ def process_transcribe(job_input: Dict[str, Any]) -> StepResult:
     srt_path = TMP_DIR / f"transcript_{uuid.uuid4().hex}.srt"
     transcript_text = run_transcribe(model, audio_path, srt_path)
     srt_url = upload_file_to_r2(srt_path, "tarik/transcribe")
+    segments = _parse_srt_segments(srt_path)
     return StepResult(
         output_urls=[srt_url],
         credits_used=2,
-        payload={"subtitle_text": transcript_text},
+        payload={
+            "text": transcript_text,
+            "subtitle_text": transcript_text,
+            "segments": segments,
+            "srt_url": srt_url,
+        },
     )
 
 
-def process_music(job_input: Dict[str, Any]) -> StepResult:
+def process_generate_music(job_input: Dict[str, Any]) -> StepResult:
     prompt = job_input["prompt"]
+    duration_seconds = int(job_input.get("duration_sec", job_input.get("duration_seconds", 30)))
     model = load_model(MUSICGEN)
     output_path = TMP_DIR / f"music_{uuid.uuid4().hex}.wav"
-    run_music(model, prompt, output_path)
+    run_music(model, prompt, duration_seconds, output_path)
     output_url = upload_file_to_r2(output_path, "tarik/music")
     return StepResult(output_urls=[output_url], credits_used=6)
 
 
-def process_sfx(job_input: Dict[str, Any]) -> StepResult:
+def process_generate_sfx(job_input: Dict[str, Any]) -> StepResult:
+    # Accept single prompt (Lovable) or batch prompts (internal)
     prompts = list(job_input.get("prompts", []))
+    if not prompts and job_input.get("prompt"):
+        prompts = [job_input["prompt"]]
+    duration_seconds = int(job_input.get("duration_sec", job_input.get("duration_seconds", 5)))
     model = load_model(AUDIOGEN)
 
     output_urls: List[str] = []
@@ -553,7 +603,7 @@ def process_sfx(job_input: Dict[str, Any]) -> StepResult:
     for idx, prompt in enumerate(prompts):
         try:
             output_path = TMP_DIR / f"sfx_{idx}_{uuid.uuid4().hex}.wav"
-            run_sfx(model, prompt, output_path)
+            run_sfx(model, prompt, duration_seconds, output_path)
             output_urls.append(upload_file_to_r2(output_path, "tarik/sfx"))
         except Exception as exc:
             logger.exception("SFX generation failed for index %s: %s", idx, exc)
@@ -566,13 +616,99 @@ def process_sfx(job_input: Dict[str, Any]) -> StepResult:
     )
 
 
+ASSEMBLE_FORMAT_SPECS = {
+    "youtube_16x9": (1920, 1080),
+    "tiktok_9x16": (1080, 1920),
+    "instagram_1x1": (1080, 1080),
+    "reel_4x5": (1080, 1350),
+    # Lovable-friendly aliases
+    "16:9": (1920, 1080),
+    "9:16": (1080, 1920),
+    "1:1": (1080, 1080),
+    "4:5": (1080, 1350),
+    "youtube": (1920, 1080),
+    "tiktok": (1080, 1920),
+    "instagram": (1080, 1080),
+    "reels": (1080, 1350),
+}
+
+ALL_DEFAULT_EXPORTS = [
+    ("youtube_16x9", 1920, 1080),
+    ("tiktok_9x16", 1080, 1920),
+    ("instagram_1x1", 1080, 1080),
+    ("reel_4x5", 1080, 1350),
+]
+
+
+def _collect_audio_urls_from_scenes(scenes: List[Dict[str, Any]]) -> List[str]:
+    """Extract all unique audio track URLs from Lovable-style scenes array."""
+    urls: List[str] = []
+    seen: set = set()
+    for scene in scenes:
+        audio_tracks = scene.get("audio_tracks", {})
+        if isinstance(audio_tracks, dict):
+            for val in audio_tracks.values():
+                if isinstance(val, str) and val and val not in seen:
+                    seen.add(val)
+                    urls.append(val)
+                elif isinstance(val, list):
+                    for item in val:
+                        if isinstance(item, str) and item and item not in seen:
+                            seen.add(item)
+                            urls.append(item)
+        elif isinstance(audio_tracks, list):
+            for item in audio_tracks:
+                if isinstance(item, str) and item and item not in seen:
+                    seen.add(item)
+                    urls.append(item)
+    return urls
+
+
+def _collect_subtitle_url_from_scenes(scenes: List[Dict[str, Any]]) -> Optional[str]:
+    """Extract first subtitle URL from scenes array."""
+    for scene in scenes:
+        sub = scene.get("subtitles")
+        if isinstance(sub, str) and sub:
+            return sub
+    return None
+
+
 def process_assemble(job_input: Dict[str, Any]) -> StepResult:
+    """Assemble video clips with audio tracks.
+
+    Accepts two input formats:
+      Lovable format:   scenes=[{video_url, audio_tracks, subtitles}], format="youtube_16x9"
+      Legacy format:    clips=[url, ...], audio_tracks={music: url, sfx: url}
+
+    If 'format' is specified, exports only that format and returns video_url.
+    If 'format' is omitted, exports all 4 formats and returns exports dict.
+    """
     unload_all_models()
 
-    clip_urls = list(job_input.get("clips", []))
-    if not clip_urls:
-        raise ValueError("assemble requires non-empty 'clips' list")
+    # --- Normalize inputs: Lovable scenes vs legacy clips ---
+    scenes = job_input.get("scenes", [])
+    clip_urls: List[str] = []
+    audio_urls: List[str] = []
+    subtitle_url: Optional[str] = None
 
+    if scenes:
+        # Lovable format: scenes=[{video_url, audio_tracks, subtitles}]
+        for scene in scenes:
+            vurl = scene.get("video_url")
+            if vurl:
+                clip_urls.append(vurl)
+        audio_urls = _collect_audio_urls_from_scenes(scenes)
+        subtitle_url = _collect_subtitle_url_from_scenes(scenes)
+    else:
+        # Legacy format: clips=[...], audio_tracks={...}
+        clip_urls = list(job_input.get("clips", []))
+        audio_urls = normalize_audio_track_urls(job_input)
+        subtitle_url = job_input.get("subtitle_srt_url") or job_input.get("srt_url")
+
+    if not clip_urls:
+        raise ValueError("assemble requires non-empty 'clips' or 'scenes' list")
+
+    # --- Concat video clips ---
     clip_paths: List[Path] = []
     for idx, clip_url in enumerate(clip_urls):
         clip_paths.append(download_to_tmp(clip_url, f"assemble_clip_{idx}.mp4"))
@@ -587,27 +723,15 @@ def process_assemble(job_input: Dict[str, Any]) -> StepResult:
     concatenated_video_path = TMP_DIR / f"concatenated_{uuid.uuid4().hex}.mp4"
     run_ffmpeg(
         [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(concat_list_path),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "20",
-            "-c:a",
-            "aac",
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_list_path),
+            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+            "-c:a", "aac",
             str(concatenated_video_path),
         ]
     )
 
-    audio_urls = normalize_audio_track_urls(job_input)
+    # --- Mix audio tracks ---
     mixed_audio_path: Optional[Path] = None
     if audio_urls:
         audio_paths = [
@@ -617,47 +741,42 @@ def process_assemble(job_input: Dict[str, Any]) -> StepResult:
         mixed_audio_path = TMP_DIR / f"mixed_audio_{uuid.uuid4().hex}.m4a"
 
         if len(audio_paths) == 1:
-            run_ffmpeg(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(audio_paths[0]),
-                    "-c:a",
-                    "aac",
-                    str(mixed_audio_path),
-                ]
-            )
+            run_ffmpeg([
+                "ffmpeg", "-y", "-i", str(audio_paths[0]),
+                "-c:a", "aac", str(mixed_audio_path),
+            ])
         else:
             ffmpeg_cmd = ["ffmpeg", "-y"]
             for audio_path in audio_paths:
                 ffmpeg_cmd.extend(["-i", str(audio_path)])
             amix_inputs = "".join([f"[{idx}:a]" for idx in range(len(audio_paths))])
-            ffmpeg_cmd.extend(
-                [
-                    "-filter_complex",
-                    f"{amix_inputs}amix=inputs={len(audio_paths)}:duration=longest:normalize=0[aout]",
-                    "-map",
-                    "[aout]",
-                    "-c:a",
-                    "aac",
-                    str(mixed_audio_path),
-                ]
-            )
+            ffmpeg_cmd.extend([
+                "-filter_complex",
+                f"{amix_inputs}amix=inputs={len(audio_paths)}:duration=longest:normalize=0[aout]",
+                "-map", "[aout]", "-c:a", "aac",
+                str(mixed_audio_path),
+            ])
             run_ffmpeg(ffmpeg_cmd)
 
-    subtitle_url = job_input.get("subtitle_srt_url") or job_input.get("srt_url")
+    # --- Subtitles ---
     subtitle_path: Optional[Path] = None
     if isinstance(subtitle_url, str) and subtitle_url:
         subtitle_path = download_to_tmp(subtitle_url, "subtitles.srt")
 
-    export_specs = [
-        ("youtube_16x9", 1920, 1080),
-        ("tiktok_9x16", 1080, 1920),
-        ("instagram_1x1", 1080, 1080),
-        ("reel_4x5", 1080, 1350),
-    ]
+    # --- Determine export formats ---
+    requested_format = job_input.get("format")
+    if requested_format:
+        spec = ASSEMBLE_FORMAT_SPECS.get(requested_format)
+        if spec is None:
+            raise ValueError(
+                f"Unknown format '{requested_format}'. "
+                f"Valid: {list(ASSEMBLE_FORMAT_SPECS.keys())}"
+            )
+        export_specs = [(requested_format, spec[0], spec[1])]
+    else:
+        export_specs = ALL_DEFAULT_EXPORTS
 
+    # --- Export ---
     output_urls: List[str] = []
     export_map: Dict[str, str] = {}
     subtitle_filter = ffmpeg_subtitles_filter_part(subtitle_path)
@@ -670,41 +789,31 @@ def process_assemble(job_input: Dict[str, Any]) -> StepResult:
         )
 
         ffmpeg_cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(concatenated_video_path),
+            "ffmpeg", "-y", "-i", str(concatenated_video_path),
         ]
         if mixed_audio_path is not None:
             ffmpeg_cmd.extend(["-i", str(mixed_audio_path), "-map", "0:v:0", "-map", "1:a:0"])
-        ffmpeg_cmd.extend(
-            [
-                "-vf",
-                vf,
-                "-c:v",
-                "libx264",
-                "-preset",
-                "medium",
-                "-crf",
-                "20",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "192k",
-                "-shortest",
-                str(output_path),
-            ]
-        )
+        ffmpeg_cmd.extend([
+            "-vf", vf,
+            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+            "-c:a", "aac", "-b:a", "192k", "-shortest",
+            str(output_path),
+        ])
         run_ffmpeg(ffmpeg_cmd)
 
         signed_url = upload_file_to_r2(output_path, f"tarik/assemble/{name}")
         output_urls.append(signed_url)
         export_map[name] = signed_url
 
+    # Lovable expects video_url (singular) when format is specified
+    payload: Dict[str, Any] = {"exports": export_map}
+    if requested_format and output_urls:
+        payload["video_url"] = output_urls[0]
+
     return StepResult(
         output_urls=output_urls,
-        credits_used=12,
-        payload={"exports": export_map},
+        credits_used=len(export_specs) * 3,
+        payload=payload,
     )
 
 
@@ -857,13 +966,26 @@ def process_health_check(job_input: Dict[str, Any]) -> StepResult:
     )
 
 
+def process_generate_tts(job_input: Dict[str, Any]) -> StepResult:
+    """Stub for TTS generation. Returns error until a TTS backend is configured."""
+    raise NotImplementedError(
+        "generate_tts is not yet implemented. "
+        "Configure a TTS backend (Coqui, Piper, or ElevenLabs) to enable this step."
+    )
+
+
 STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
     "generate_video": process_generate_video,
     "upscale": process_upscale,
     "lipsync": process_lipsync,
     "transcribe": process_transcribe,
-    "music": process_music,
-    "sfx": process_sfx,
+    # Lovable names
+    "generate_music": process_generate_music,
+    "generate_sfx": process_generate_sfx,
+    "generate_tts": process_generate_tts,
+    # Legacy aliases (backward compat)
+    "music": process_generate_music,
+    "sfx": process_generate_sfx,
     "assemble": process_assemble,
     "reformat": process_reformat,
     "health_check": process_health_check,
