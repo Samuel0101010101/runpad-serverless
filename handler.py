@@ -673,6 +673,24 @@ def _collect_subtitle_url_from_scenes(scenes: List[Dict[str, Any]]) -> Optional[
     return None
 
 
+def _build_atempo_filter(speed: float) -> str:
+    """Build FFmpeg atempo filter chain for a given speed multiplier.
+
+    atempo accepts 0.5..100.0 per stage, so values below 0.5
+    require chaining (e.g., 0.25x = atempo=0.5,atempo=0.5).
+    """
+    if speed >= 0.5:
+        return f"atempo={speed}"
+    # Chain multiple atempo stages for very slow speeds
+    parts: List[str] = []
+    remaining = speed
+    while remaining < 0.5:
+        parts.append("atempo=0.5")
+        remaining /= 0.5
+    parts.append(f"atempo={remaining:.4f}")
+    return ",".join(parts)
+
+
 def process_assemble(job_input: Dict[str, Any]) -> StepResult:
     """Assemble video clips with audio tracks.
 
@@ -708,10 +726,37 @@ def process_assemble(job_input: Dict[str, Any]) -> StepResult:
     if not clip_urls:
         raise ValueError("assemble requires non-empty 'clips' or 'scenes' list")
 
-    # --- Concat video clips ---
+    # --- Per-scene speed values (from scenes array or global default) ---
+    scene_speeds: List[float] = []
+    if scenes:
+        for scene in scenes:
+            speed = float(scene.get("speed", 1.0))
+            speed = max(0.25, min(4.0, speed))  # clamp to safe range
+            scene_speeds.append(speed)
+    else:
+        scene_speeds = [1.0] * len(clip_urls)
+
+    # --- Download and optionally speed-adjust clips ---
     clip_paths: List[Path] = []
     for idx, clip_url in enumerate(clip_urls):
-        clip_paths.append(download_to_tmp(clip_url, f"assemble_clip_{idx}.mp4"))
+        raw_path = download_to_tmp(clip_url, f"assemble_clip_{idx}.mp4")
+        speed = scene_speeds[idx] if idx < len(scene_speeds) else 1.0
+        if speed != 1.0:
+            adjusted_path = TMP_DIR / f"speed_{speed}x_{idx}_{uuid.uuid4().hex}.mp4"
+            vf_speed = f"setpts=PTS/{speed}"
+            af_speed = _build_atempo_filter(speed)
+            speed_cmd = [
+                "ffmpeg", "-y", "-i", str(raw_path),
+                "-vf", vf_speed,
+                "-af", af_speed,
+                "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                "-c:a", "aac",
+                str(adjusted_path),
+            ]
+            run_ffmpeg(speed_cmd)
+            clip_paths.append(adjusted_path)
+        else:
+            clip_paths.append(raw_path)
 
     concat_list_path = TMP_DIR / f"concat_{uuid.uuid4().hex}.txt"
     concat_entries = []
