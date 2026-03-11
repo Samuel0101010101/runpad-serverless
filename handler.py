@@ -51,12 +51,19 @@ def _is_volume_mounted() -> bool:
 
 
 def _pick_cache_dir() -> Path:
+    # 1. Network volume (highest priority — persistent across cold starts)
     if _is_volume_mounted():
         ws = Path("/workspace/models")
         ws.mkdir(parents=True, exist_ok=True)
         logger.info("Network volume detected at /workspace")
         return ws
-    logger.warning("No network volume detected — falling back to /tmp/models")
+    # 2. Baked-in model dir from Docker image (set by BAKED_MODEL_DIR env var)
+    baked = os.environ.get("BAKED_MODEL_DIR", "").strip()
+    if baked and Path(baked).is_dir():
+        logger.info("Using baked-in model dir: %s", baked)
+        return Path(baked)
+    # 3. Fallback to /tmp
+    logger.warning("No network volume or baked models — falling back to /tmp/models")
     fallback = Path("/tmp/models")
     fallback.mkdir(parents=True, exist_ok=True)
     return fallback
@@ -1156,5 +1163,15 @@ if __name__ == "__main__":
         test_event = {"input": {"step": "health_check"}}
         print(handler(test_event))
     else:
+        # Pre-load Wan on startup so the first job doesn't wait for model loading.
+        # This runs BEFORE runpod.serverless.start() begins accepting jobs.
+        if os.environ.get("WARMUP_MODEL", "1") == "1":
+            try:
+                logger.info("WARMUP: Pre-loading Wan model...")
+                load_model(WAN)
+                logger.info("WARMUP: Wan model ready — accepting jobs")
+            except Exception as exc:
+                logger.warning("WARMUP: Failed to pre-load Wan: %s (will retry on first job)", exc)
+
         # Production: start the RunPod serverless polling loop
         runpod.serverless.start({"handler": handler})

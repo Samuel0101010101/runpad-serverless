@@ -24,7 +24,11 @@ jobs:
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghcrunners
+          # Free ~30GB by removing unused toolchains (need space for ~20GB image + model weights)
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghcrunners \
+            /usr/share/swift /usr/local/graalvm /usr/local/.ghcup \
+            /usr/local/share/powershell /usr/local/share/chromium \
+            /usr/local/lib/node_modules /opt/hostedtoolcache
           docker system prune -af
           df -h
 
@@ -46,7 +50,5 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           build-args: |
             BUILDKIT_INLINE_CACHE=1

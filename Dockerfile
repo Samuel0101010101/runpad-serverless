@@ -29,10 +29,21 @@ RUN pip install --no-cache-dir --prefer-binary -r requirements.txt \
     && find "$SITE" -name "*.pyc" -delete 2>/dev/null; true \
     && rm -rf "$SITE"/nvidia/*/lib/*.a 2>/dev/null; true
 
-# Layer 3: application code (rebuilds in seconds on code changes)
+# Layer 3: Pre-download Wan 2.2 TI2V-5B weights so cold starts skip HuggingFace
+# This adds ~12GB to the image but saves 5-10 min on every cold start.
+# The layer is cached by Docker + RunPod, so rebuilds are fast unless the model changes.
+ENV HF_HUB_ENABLE_HF_TRANSFER=0
+ENV HF_HUB_DISABLE_XET=1
+RUN python -c "\
+from huggingface_hub import snapshot_download; \
+snapshot_download('Wan-AI/Wan2.2-TI2V-5B-Diffusers', cache_dir='/app/models', ignore_patterns=['*.md','*.txt'])"
+
+# Layer 4: application code (rebuilds in seconds on code changes)
 COPY handler.py wan.py realesrgan_backend.py wav2lip_backend.py whisper_model.py audiocraft_backend.py faceswap_backend.py ./
 
 # Backend env vars
 ENV FACESWAP_BACKEND=faceswap_backend:load_model
+# Tell handler where the baked-in models live
+ENV BAKED_MODEL_DIR=/app/models
 
 CMD ["python", "-u", "handler.py"]
