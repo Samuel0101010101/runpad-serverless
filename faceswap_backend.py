@@ -139,18 +139,23 @@ def _download_inswapper(cache_dir: str) -> str:
 def load_model(cache_dir: str) -> FaceSwapper:
     """Entry point: FACESWAP_BACKEND=faceswap_backend:load_model."""
     import insightface
+    import onnxruntime
     from insightface.app import FaceAnalysis
 
-    logger.info("Loading InsightFace FaceAnalysis (cache=%s)", cache_dir)
+    # Use whatever ONNX providers are available (GPU or CPU)
+    available = onnxruntime.get_available_providers()
+    providers = [p for p in ["CUDAExecutionProvider", "CPUExecutionProvider"] if p in available]
+
+    logger.info("Loading InsightFace FaceAnalysis (cache=%s, providers=%s)", cache_dir, providers)
     app = FaceAnalysis(
         name="buffalo_l",
         root=cache_dir,
-        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        providers=providers,
     )
     app.prepare(ctx_id=0, det_size=(640, 640))
 
     inswapper_path = _download_inswapper(cache_dir)
-    swapper = insightface.model_zoo.get_model(inswapper_path, providers=["CUDAExecutionProvider"])
+    swapper = insightface.model_zoo.get_model(inswapper_path, providers=providers)
 
-    logger.info("FaceSwapper loaded on CUDA")
+    logger.info("FaceSwapper loaded (providers=%s)", providers)
     return FaceSwapper(app, swapper)

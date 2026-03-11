@@ -31,15 +31,10 @@ julius
 lameenc
 num2words
 soundfile
-spacy==3.7.6
 hydra-core>=1.1
 hydra_colorlog
 librosa
-torchmetrics
 protobuf
-openunmix
-dora_search
 
-# Face swap (InsightFace)
-insightface>=0.7.3
-onnxruntime-gpu
+# Face swap (InsightFace — installed with --no-deps in Dockerfile)
+onnxruntime

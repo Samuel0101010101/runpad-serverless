@@ -20,7 +20,14 @@ RUN pip install --no-cache-dir --prefer-binary -r requirements.txt \
     && pip install --no-cache-dir --no-deps /tmp/xformers-stub \
     && pip install --no-cache-dir --no-deps demucs openai-whisper \
     && pip install --no-cache-dir --no-deps "audiocraft @ git+https://github.com/facebookresearch/audiocraft.git@v1.3.0" \
-    && rm -rf /tmp/* /root/.cache
+    && pip install --no-cache-dir --no-deps "insightface>=0.7.3" \
+    && rm -rf /tmp/* /root/.cache \
+    # ── Trim ~500MB+ of unnecessary files from site-packages ──
+    && SITE=$(python -c "import site; print(site.getsitepackages()[0])") \
+    && find "$SITE" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; true \
+    && find "$SITE" -type d -name "tests" -o -name "test" | xargs rm -rf 2>/dev/null; true \
+    && find "$SITE" -name "*.pyc" -delete 2>/dev/null; true \
+    && rm -rf "$SITE"/nvidia/*/lib/*.a 2>/dev/null; true
 
 # Layer 3: application code (rebuilds in seconds on code changes)
 COPY handler.py wan.py realesrgan_backend.py wav2lip_backend.py whisper_model.py audiocraft_backend.py faceswap_backend.py ./
