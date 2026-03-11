@@ -39,3 +39,7 @@ torchmetrics
 protobuf
 openunmix
 dora_search
+
+# Face swap (InsightFace)
+insightface>=0.7.3
+onnxruntime-gpu

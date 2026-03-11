@@ -86,6 +86,7 @@ WAV2LIP = "wav2lip_gfpgan"
 WHISPER = "whisper_large_v3"
 MUSICGEN = "musicgen_large"
 AUDIOGEN = "audiogen"
+FACESWAP = "faceswap"
 
 
 MODEL_VRAM_HINTS_GB = {
@@ -95,6 +96,7 @@ MODEL_VRAM_HINTS_GB = {
     WHISPER: 10,
     MUSICGEN: 4,
     AUDIOGEN: 3,
+    FACESWAP: 2,
 }
 
 
@@ -105,6 +107,7 @@ MODELS: Dict[str, Any] = {
     WHISPER: None,
     MUSICGEN: None,
     AUDIOGEN: None,
+    FACESWAP: None,
 }
 
 
@@ -1019,6 +1022,36 @@ def process_generate_tts(job_input: Dict[str, Any]) -> StepResult:
     )
 
 
+def process_face_swap(job_input: Dict[str, Any]) -> StepResult:
+    """Swap face in video to match a character reference image.
+
+    Input:
+        video_url: URL of the video to process
+        reference_face_url: URL of the character reference face image
+    Output:
+        output_url: URL of the face-swapped video
+    """
+    video_url = job_input["video_url"]
+    reference_face_url = job_input["reference_face_url"]
+
+    model = load_model(FACESWAP)
+    video_path = download_to_tmp(video_url, "faceswap_video.mp4")
+    ref_path = download_to_tmp(reference_face_url, "faceswap_ref.jpg")
+    output_path = TMP_DIR / f"faceswapped_{uuid.uuid4().hex}.mp4"
+
+    if hasattr(model, "swap_face"):
+        model.swap_face(
+            video_path=str(video_path),
+            reference_face_path=str(ref_path),
+            output_path=str(output_path),
+        )
+    else:
+        raise NotImplementedError("Face swap backend not configured")
+
+    output_url = upload_file_to_r2(output_path, "tarik/faceswap")
+    return StepResult(output_urls=[output_url], credits_used=3)
+
+
 STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
     "generate_video": process_generate_video,
     "upscale": process_upscale,
@@ -1033,6 +1066,7 @@ STEP_HANDLERS: Dict[str, Callable[[Dict[str, Any]], StepResult]] = {
     "sfx": process_generate_sfx,
     "assemble": process_assemble,
     "reformat": process_reformat,
+    "face_swap": process_face_swap,
     "health_check": process_health_check,
 }
 

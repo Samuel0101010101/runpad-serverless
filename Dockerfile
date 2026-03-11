@@ -23,6 +23,9 @@ RUN pip install --no-cache-dir --prefer-binary -r requirements.txt \
     && rm -rf /tmp/* /root/.cache
 
 # Layer 3: application code (rebuilds in seconds on code changes)
-COPY handler.py wan.py realesrgan_backend.py wav2lip_backend.py whisper_model.py audiocraft_backend.py ./
+COPY handler.py wan.py realesrgan_backend.py wav2lip_backend.py whisper_model.py audiocraft_backend.py faceswap_backend.py ./
+
+# Backend env vars
+ENV FACESWAP_BACKEND=faceswap_backend:load_model
 
 CMD ["python", "-u", "handler.py"]
